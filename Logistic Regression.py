@@ -1,120 +1,179 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Feb  5 09:52:26 2019
+'''Logistic script for solar array image classification
 
-@author: josep
-"""
+Author:       Emma Sun
+Date:         February 8, 2019
+Organization: MIDS
+'''
 
-from sklearn.datasets import load_digits
-import numpy as np 
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn import metrics
-
-
-digits = load_digits()
-
-# Print to show there are 1797 images (8 by 8 images for a dimensionality of 64)
-print(“Image Data Shape” , digits.data.shape)
-# Print to show there are 1797 labels (integers from 0–9)
-print("Label Data Shape", digits.target.shape)
-
-
-plt.figure(figsize=(20,4))
-for index, (image, label) in enumerate(zip(digits.data[0:5], digits.target[0:5])):
- plt.subplot(1, 5, index + 1)
- plt.imshow(np.reshape(image, (8,8)), cmap=plt.cm.gray)
- plt.title('Training: %i\n' % label, fontsize = 20)
- 
- from sklearn.model_selection import train_test_split
-x_train, x_test, y_train, y_test = train_test_split(digits.data, 
-                                                    digits.target, 
-                                                    test_size=0.25, 
-                                                    random_state=0)
-
-
-# all parameters not specified are set to their defaults
-logisticRegr = LogisticRegression()
-
-logisticRegr.fit(x_train, y_train)
-
-# Returns a NumPy Array
-# Predict for One Observation (image)
-logisticRegr.predict(x_test[0].reshape(1,-1))
-
-logisticRegr.predict(x_test[0:10])
-
-predictions = logisticRegr.predict(x_test)
-
-# Use score method to get accuracy of model
-score = logisticRegr.score(x_test, y_test)
-print(score)
-
-cm = metrics.confusion_matrix(y_test, predictions)
-print(cm)
-
-plt.figure(figsize=(9,9))
-sns.heatmap(cm, annot=True, fmt=".3f", linewidths=.5, square = True, cmap = 'Blues_r');
-plt.ylabel('Actual label');
-plt.xlabel('Predicted label');
-all_sample_title = 'Accuracy Score: {0}'.format(score)
-plt.title(all_sample_title, size = 15);
-
-plt.figure(figsize=(9,9))
-plt.imshow(cm, interpolation='nearest', cmap='Pastel1')
-plt.title('Confusion matrix', size = 15)
-plt.colorbar()
-tick_marks = np.arange(10)
-plt.xticks(tick_marks, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], rotation=45, size = 10)
-plt.yticks(tick_marks, ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"], size = 10)
-plt.tight_layout()
-plt.ylabel('Actual label', size = 15)
-plt.xlabel('Predicted label', size = 15)
-width, height = cm.shape
-
-for x in xrange(width):
-    for y in xrange(height):
-        plt.annotate(str(cm[x][y]), xy=(y, x), 
-        horizontalalignment='center',
-        verticalalignment='center')
-  
-from sklearn.datasets import fetch_mldata
-
-mnist = fetch_mldata('MNIST original')
-
-# These are the images
-# There are 70,000 images (28 by 28 images for a dimensionality of 784)
-print(mnist.data.shape)
-# These are the labels
-print(mnist.target.shape)
-
-from sklearn.model_selection import train_test_split
-train_img, test_img, train_lbl, test_lbl = train_test_split(
- mnist.data, mnist.target, test_size=1/7.0, random_state=0)
-
+'''
+Import the packages needed for classification
+'''
 import numpy as np
 import matplotlib.pyplot as plt
-plt.figure(figsize=(20,4))
-for index, (image, label) in enumerate(zip(train_img[0:5], train_lbl[0:5])):
- plt.subplot(1, 5, index + 1)
- plt.imshow(np.reshape(image, (28,28)), cmap=plt.cm.gray)
- plt.title('Training: %i\n' % label, fontsize = 20)
- 
- from sklearn.linear_model import LogisticRegression
-# all parameters not specified are set to their defaults
-# default solver is incredibly slow thats why we change it
-logisticRegr = LogisticRegression(solver = 'lbfgs')
+import matplotlib as mpl
+import pandas as pd
+from sklearn.model_selection import StratifiedKFold
+import sklearn.metrics as metrics
+from sklearn.linear_model import LogisticRegression
+plt.close()
 
-logisticRegr.fit(train_img, train_lbl)
+'''
+Set directory parameters
+'''
+# Set the directories for the data and the CSV files that contain ids/labels
+dir_train_images  = '../Kaggle Raw Data/training/'
+dir_test_images   = '../Kaggle Raw Data/testing/'
+dir_train_labels  = '../Kaggle Raw Data/labels_training.csv'
+dir_test_ids      = '../Kaggle Raw Data/sample_submission.csv'
 
-# Returns a NumPy Array
-# Predict for One Observation (image)
-logisticRegr.predict(test_img[0].reshape(1,-1))
+'''
+Include the functions used for loading, preprocessing, features extraction, 
+classification, and performance evaluation
+'''
 
-logisticRegr.predict(test_img[0:10])
-predictions = logisticRegr.predict(test_img)
-score = logisticRegr.score(test_img, test_lbl)
-print(score)
+def load_data(dir_data, dir_labels, training=True):
+    ''' Load each of the image files into memory 
+
+    While this is feasible with a smaller dataset, for larger datasets,
+    not all the images would be able to be loaded into memory
+
+    When training=True, the labels are also loaded
+    '''
+    labels_pd = pd.read_csv(dir_labels)
+    ids       = labels_pd.id.values
+    data      = []
+    for identifier in ids:
+        fname     = dir_data + identifier.astype(str) + '.tif'
+        image     = mpl.image.imread(fname)
+        data.append(image)
+    data = np.array(data) # Convert to Numpy array
+    if training:
+        labels = labels_pd.label.values
+        return data, labels
+    else:
+        return data, ids
+
+def preprocess_and_extract_features(data):
+    '''Preprocess data and extract features
+    
+    Preprocess: normalize, scale, repair
+    Extract features: transformations and dimensionality reduction
+    '''
+    # Here, we do something trivially simple: we take the average of the RGB
+    # values to produce a grey image, transform that into a vector, then
+    # extract the mean and standard deviation as features.
+    
+    # Make the image grayscale
+    data = np.mean(data, axis=3)
+    
+    # Vectorize the grayscale matrices
+    vectorized_data = data.reshape(data.shape[0],-1)
+    
+    # extract the mean and standard deviation of each sample as features
+    feature_mean = np.mean(vectorized_data,axis=1)
+    feature_std  = np.std(vectorized_data,axis=1)
+    
+    # Combine the extracted features into a single feature vector
+    features = np.stack((feature_mean,feature_std),axis=-1)
+    
+    return features
+
+def set_classifier():
+    '''Shared function to select the classifier for both performance evaluation
+    and testing
+    '''
+    return LogisticRegression()
+
+def cv_performance_assessment(X,y,k,clf):
+    '''Cross validated performance assessment
+    
+    X   = training data
+    y   = training labels
+    k   = number of folds for cross validation
+    clf = classifier to use
+    
+    Divide the training data into k folds of training and validation data. 
+    For each fold the classifier will be trained on the training data and
+    tested on the validation data. The classifier prediction scores are 
+    aggregated and output
+    '''
+    # Establish the k folds
+    prediction_scores = np.empty(y.shape[0],dtype='object')
+    kf = StratifiedKFold(n_splits=k, shuffle=True)
+    for train_index, val_index in kf.split(X, y):
+        # Extract the training and validation data for this fold
+        X_train, X_val   = X[train_index], X[val_index]
+        y_train          = y[train_index]
+        
+        # Train the classifier
+        X_train_features = preprocess_and_extract_features(X_train)
+        clf              = clf.fit(X_train_features,y_train)
+        
+        # Test the classifier on the validation data for this fold
+        X_val_features   = preprocess_and_extract_features(X_val)
+        cpred            = clf.predict_proba(X_val_features)
+        
+        # Save the predictions for this fold
+        prediction_scores[val_index] = cpred[:,1]
+    return prediction_scores
+
+def plot_roc(labels, prediction_scores):
+    fpr, tpr, _ = metrics.roc_curve(labels, prediction_scores, pos_label=1)
+    auc = metrics.roc_auc_score(labels, prediction_scores)
+    legend_string = 'AUC = {:0.3f}'.format(auc)
+   
+    plt.plot([0,1],[0,1],'--', color='gray', label='Chance')
+    plt.plot(fpr, tpr, label=legend_string)
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.grid('on')
+    plt.axis('square')
+    plt.legend()
+    plt.tight_layout()
+
+
+'''
+Sample script for cross validated performance
+'''
+# Set parameters for the analysis
+num_training_folds = 20
+
+# Load the data
+data, labels = load_data(dir_train_images, dir_train_labels, training=True)
+
+# Choose which classifier to use
+clf = set_classifier()
+
+# Perform cross validated performance assessment
+prediction_scores = cv_performance_assessment(data,labels,num_training_folds,clf)
+
+# Compute and plot the ROC curves
+plot_roc(labels, prediction_scores)
+
+
+'''
+Sample script for producing a Kaggle submission
+'''
+
+produce_submission = False # Switch this to True when you're ready to create a submission for Kaggle
+
+if produce_submission:
+    # Load data, extract features, and train the classifier on the training data
+    training_data, training_labels = load_data(dir_train_images, dir_train_labels, training=True)
+    training_features              = preprocess_and_extract_features(training_data)
+    clf                            = set_classifier()
+    clf.fit(training_features,training_labels)
+
+    # Load the test data and test the classifier
+    test_data, ids = load_data(dir_test_images, dir_test_ids, training=False)
+    test_features  = preprocess_and_extract_features(test_data)
+    test_scores    = clf.predict_proba(test_features)[:,1]
+
+    # Save the predictions to a CSV file for upload to Kaggle
+    submission_file = pd.DataFrame({'id':    ids,
+                                   'score':  test_scores})
+    submission_file.to_csv('submission.csv',
+                           columns=['id','score'],
+                           index=False)
 
