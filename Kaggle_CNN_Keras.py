@@ -214,9 +214,13 @@ if produce_submission:
                                                                                 random_state = 42)
     
     # Augment the data to create more images
-    aug = ImageDataGenerator(rotation_range = 30, width_shift_range = 0.1, 
-                             height_shift_range = 0.1, shear_range = 0.2, zoom_range = 0.2,
-                             horizontal_flip = True, fill_mode = "nearest")
+    aug = ImageDataGenerator(rotation_range = 30,                    # Rotate original images up to 30 degrees
+                             width_shift_range = 0.1,                # shift the image along the X axis up to 10%
+                             height_shift_range = 0.1,               # Shift the Image along the Y Axis up to 10%
+                             shear_range = 0.2,                      # Cut off edges of the image up to 20%
+                             zoom_range = 0.2,                       # Zoom in on the image up to 20%
+                             horizontal_flip = True,                 # Flip the image along the horizonal
+                             fill_mode = "nearest")                  # fill any gaps from shearing from the nearest pixels
     
     # Train the classifier on the augmented data
     clf.fit_generator(aug.flow(training_data, training_labels, batch_size = 50), 
