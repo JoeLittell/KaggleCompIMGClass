@@ -5,16 +5,28 @@ Solar Panel Classification Team Project (Kaggle)
 Duke University
 Master's in Interdisiplinary Data Science
 IDS 705 - Principles of Machine Learning
-Instructor: Dr. Kyle Bradberry
+Instructor: Dr. Kyle Bradbury
 
 Team Members:
     Joe Littell
     Emma Sun
     Chang Shu
     Julia Oblasova
+    
+Notes: 
+
+    This project is derived from Dr. Bradbury's kNN example, reusing the load_data, 
+    set_classifier, cv_performance_assessment, and plot_roc functions, as well as the 
+    produce_submissions conditional. As such, the Load_data and Set_classifier were highly
+    modified by the group in order to better segment the images as well as build the 
+    sequential cNN utilizing the Keras package's built in functionality. Minor modifications
+    were made to the cv_perfomance_assessment, and produce_submissions conditional in order 
+    for it to properly work with the adaptations and modifications to the other functions.
 """
 
 # Library's and Packages to be utilized
+from sklearn.model_selection import train_test_split
+from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential                         # Used to build a sequential cNN
 from keras.layers import Conv2D, MaxPooling2D, Activation   # Adding layers to the cNN
 from keras.layers import Dropout, Flatten, Dense            # Connecting layers for the Conv Layers
@@ -59,7 +71,7 @@ def load_data(dir_data, dir_labels, training = True):
         image     = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)    # Convert to RGB Scale
         image     = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)    # Convert to HSV (makes anything not a solar panel green)
         image     = cv2.GaussianBlur(image, (5, 5), 0)        # removes additional noise from the dataset
-        image     = image/225                                 # scales all of the values to a num between 0 an 1
+        image     = image/255                                 # scales all of the values to a num between 0 an 1
         data.append(image)                                    # add the image to the array
     data = np.array(data)                                     # Convert to Numpy array
     if training:
@@ -79,19 +91,19 @@ def set_classifier():
     clf = Sequential()
     
     # Add the first conv. layer
-    clf.add(Conv2D(32,                          # This is the number of nodes in the layer
+    clf.add(Conv2D(64,                          # This is the number of nodes/nuerons in the layer
                    (3, 3),                      # This is kernal size, essentially a 3x3 matrix filter
                    input_shape=(101, 101, 3)))  # This is the shape of the matrix which is image dim and 3 color channels
     clf.add(Activation('relu'))                 # Rectified Linear Activation
     clf.add(MaxPooling2D(pool_size=(2, 2)))     # This takes the max values of the filter
 
     # Add the second conv. layer
-    clf.add(Conv2D(32, (3, 3)))
+    clf.add(Conv2D(64, (3, 3)))
     clf.add(Activation('relu'))
     clf.add(MaxPooling2D(pool_size=(2, 2)))
 
     # Add the third conv. layer
-    clf.add(Conv2D(64, (3, 3)))
+    clf.add(Conv2D(128, (3, 3)))
     clf.add(Activation('relu'))
     clf.add(MaxPooling2D(pool_size=(2, 2)))
     
@@ -101,7 +113,7 @@ def set_classifier():
     # Build our hidden layer to connect all of the above layers together
     clf.add(Dense(64))                         # This is for the output later
     clf.add(Activation('relu'))
-    clf.add(Dropout(0.5))                      # This is a high rate to prevent overfitting
+    clf.add(Dropout(0.25))                     # This is a high rate to prevent overfitting
     clf.add(Dense(1))                          # This is the final output layer, our numbers are between 0 and 1
                                                # so we only need 1
     
@@ -139,8 +151,7 @@ def cv_performance_assessment(X,y,k,clf):
         
         # Train the classifier        
         clf.fit(X_train, y_train, 
-                epochs = 10, 
-                batch_size = 50)
+                epochs = 20)
         
         # Test the classifier on the validation data for this fold      
         cpred            = clf.predict(X_val)
@@ -179,10 +190,10 @@ data, labels = load_data(dir_train_images, dir_train_labels, training=True)
 clf = set_classifier()
 
 # Perform cross validated performance assessment
-# prediction_scores = cv_performance_assessment(data,labels,num_training_folds,clf)
+#prediction_scores = cv_performance_assessment(data,labels,num_training_folds,clf)
 
 # Compute and plot the ROC curves
-# plot_roc(labels, prediction_scores)
+#plot_roc(labels, prediction_scores)
 
 
 '''
@@ -195,7 +206,22 @@ if produce_submission:
     
     # Load data, extract features, and train the classifier on the training data
     training_data, training_labels = load_data(dir_train_images, dir_train_labels, training=True)
-    clf.fit(training_data, training_labels, epochs = 10)
+    
+    # Split the training data between a training and validation set
+    training_data, valid_data, training_labels, valid_labels = train_test_split(training_data ,
+                                                                                training_labels, 
+                                                                                test_size = 0.25, 
+                                                                                random_state = 42)
+    
+    # Augment the data to create more images
+    aug = ImageDataGenerator(rotation_range = 30, width_shift_range = 0.1, 
+                             height_shift_range = 0.1, shear_range = 0.2, zoom_range = 0.2,
+                             horizontal_flip = True, fill_mode = "nearest")
+    
+    # Train the classifier on the augmented data
+    clf.fit_generator(aug.flow(training_data, training_labels, batch_size = 50), 
+                      validation_data = (valid_data, valid_labels), 
+                      steps_per_epoch = len(training_data), epochs = 5, verbose = 1)
     
     # Load the test data and test the classifier
     test_data, ids = load_data(dir_test_images, dir_test_ids, training = False)
@@ -204,6 +230,6 @@ if produce_submission:
     # Save the predictions to a CSV file for upload to Kaggle
     submission_file = pd.DataFrame({'id':    ids,
                                    'score':  test_scores})
-    submission_file.to_csv('submission4.csv',
+    submission_file.to_csv('submission9.csv',
                            columns = ['id','score'],
                            index = False)
